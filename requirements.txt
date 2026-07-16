@@ -2,3 +2,11 @@ aiohttp
 aiofiles
 sentence-transformers
 qdrant-client
+
+# Stage 1b — attachment text extraction
+pdfminer.six
+pytesseract
+Pillow
+python-docx
+openpyxl
+pytest
