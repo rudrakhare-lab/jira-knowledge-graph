@@ -185,7 +185,12 @@ def fold_link_history(record: dict):
     discrepancies: list[dict] = []
     targets = set(by_target) | set(snapshot)
     for target in sorted(targets):
+        # NOTE: lexicographic ts sort assumes a uniform timezone offset (this Jira
+        # instance emits +0530 throughout). Not valid for mixed-offset/UTC-normalized data.
         evs = sorted(by_target.get(target, []), key=lambda e: e["ts"])
+        # NOTE: link_type is best-effort. Changelog links use phrase-mapped types
+        # (map_link_phrase) while snapshot-seeded links use normalize_link_type(name);
+        # the two can diverge, so type-filtered as-of queries are best-effort.
         # choose link_type: first add's mapped_type, else snapshot canonical, else first event's
         ltype = None
         for e in evs:
@@ -211,6 +216,9 @@ def fold_link_history(record: dict):
                     present_since = None
         if present_since is not None:
             rows.append(_lh_row(key, target, ltype, present_since, SENTINEL, "changelog"))
+            if target not in snapshot:
+                discrepancies.append({"ticket": key, "target": target,
+                                      "reason": "open-in-changelog-but-absent-from-snapshot"})
         elif target in snapshot:
             # changelog says removed, but snapshot still has it -> discrepancy
             discrepancies.append({"ticket": key, "target": target,

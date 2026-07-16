@@ -208,3 +208,15 @@ def test_link_discrepancy_present_but_closed():
     assert _link_by_target(rows, "SUP-9")[-1]["valid_to"] == "2020-02-01"
     assert {"ticket": "SUP-1", "target": "SUP-9",
             "reason": "present-in-snapshot-but-closed"} in disc
+
+
+def test_link_open_in_changelog_but_absent_from_snapshot_flagged():
+    # added, never removed, but NOT in current snapshot -> open interval + discrepancy
+    rec = _link_rec("2014-08-14", issuelinks=[], changelog=[
+        _link_entry("2020-01-01", "add", "SUP-9", "This issue blocks SUP-9")])
+    rows, disc = replay.fold_link_history(rec)
+    assert _link_by_target(rows, "SUP-9") == [
+        {"node_id": "SUP-1", "target_key": "SUP-9", "link_type": "BLOCKS",
+         "valid_from": "2020-01-01", "valid_to": replay.SENTINEL, "source": "changelog"}]
+    assert {"ticket": "SUP-1", "target": "SUP-9",
+            "reason": "open-in-changelog-but-absent-from-snapshot"} in disc
