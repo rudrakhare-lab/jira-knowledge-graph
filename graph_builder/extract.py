@@ -112,3 +112,37 @@ def extract_membership_people_edges(record: dict) -> list[dict]:
         edges.append(_edge(key, aid, "ASSIGNED_TO", vf))
 
     return edges
+
+
+LINK_TYPE_MAP = {
+    "Blocks": "BLOCKS",
+    "Relates": "RELATES_TO",
+    "Duplicate": "DUPLICATES",
+    "Cloners": "CLONES",
+    "Problem/Incident": "CAUSES",
+    "Post-Incident Reviews": "REVIEWS",
+}
+
+
+def normalize_link_type(name: str) -> str:
+    if name in LINK_TYPE_MAP:
+        return LINK_TYPE_MAP[name]
+    # UPPER_SNAKE of anything else (e.g. "SIM Outbound link")
+    return re.sub(r"[^A-Za-z0-9]+", "_", (name or "").strip()).strip("_").upper()
+
+
+def extract_link_edges(record: dict) -> list[dict]:
+    f = record.get("fields") or {}
+    key = record["key"]
+    vf = f.get("created")
+    edges: list[dict] = []
+    for link in (f.get("issuelinks") or []):
+        etype = normalize_link_type(((link.get("type") or {}).get("name")) or "")
+        lid = link.get("id")
+        out = link.get("outwardIssue")
+        inw = link.get("inwardIssue")
+        if out and out.get("key"):
+            edges.append(_edge(key, out["key"], etype, vf, link_id=lid))
+        elif inw and inw.get("key"):
+            edges.append(_edge(inw["key"], key, etype, vf, link_id=lid))
+    return edges

@@ -56,3 +56,34 @@ def test_membership_and_people_edges(ticket_full):
 def test_no_assignee_no_assigned_edge(ticket_epic):
     es = _edge_set(extract.extract_membership_people_edges(ticket_epic))
     assert not any(t == "ASSIGNED_TO" for (_, _, t) in es)
+
+
+def test_link_edges_direction_and_type(ticket_full):
+    edges = extract.extract_link_edges(ticket_full)
+    es = _edge_set(edges)
+    # outward "blocks": this ticket -> target
+    assert ("SUP-500", "SUP-999", "BLOCKS") in es
+    # inward "relates to": target -> this ticket (canonical src=inward)
+    assert ("SUP-100", "SUP-500", "RELATES_TO") in es
+    # link_id preserved for provenance
+    assert {e["link_id"] for e in edges} == {"L1", "L2"}
+
+
+def test_normalize_link_type():
+    assert extract.normalize_link_type("Blocks") == "BLOCKS"
+    assert extract.normalize_link_type("Problem/Incident") == "CAUSES"
+    assert extract.normalize_link_type("SIM Outbound link") == "SIM_OUTBOUND_LINK"
+
+
+def test_mirror_links_produce_same_canonical_edge():
+    # Ticket A says it blocks B (outward); Ticket B says it is blocked by A (inward).
+    a = {"key": "A-1", "fields": {"created": "t", "issuelinks": [
+        {"id": "L9", "type": {"name": "Blocks", "inward": "is blocked by",
+         "outward": "blocks"}, "outwardIssue": {"key": "B-2"}}]}}
+    b = {"key": "B-2", "fields": {"created": "t", "issuelinks": [
+        {"id": "L9", "type": {"name": "Blocks", "inward": "is blocked by",
+         "outward": "blocks"}, "inwardIssue": {"key": "A-1"}}]}}
+    ea = extract.extract_link_edges(a)[0]
+    eb = extract.extract_link_edges(b)[0]
+    assert (ea["src"], ea["dst"], ea["type"]) == (eb["src"], eb["dst"], eb["type"])
+    assert (ea["src"], ea["dst"], ea["type"]) == ("A-1", "B-2", "BLOCKS")
