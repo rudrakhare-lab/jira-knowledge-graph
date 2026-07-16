@@ -130,3 +130,81 @@ def test_extract_link_events_add_and_remove():
          "type_phrase": "This issue devices linked to EIM-15015",
          "mapped_type": "DEVICES_LINKED_TO"},
     ]
+
+
+def _link_entry(ts, action, target, phrase):
+    it = {"field": "Link"}
+    if action == "add":
+        it.update({"from": None, "fromString": None, "to": target, "toString": phrase})
+    else:
+        it.update({"from": target, "fromString": phrase, "to": None, "toString": None})
+    return {"created": ts, "author": {"accountId": "a"}, "items": [it]}
+
+
+def _link_rec(created, issuelinks=None, changelog=None):
+    return {"key": "SUP-1",
+            "fields": {"created": created, "issuelinks": issuelinks or []},
+            "changelog": changelog or []}
+
+
+def _link_by_target(rows, target):
+    return sorted([r for r in rows if r["target_key"] == target],
+                  key=lambda r: r["valid_from"])
+
+
+def test_link_added_then_removed_is_closed_interval():
+    rec = _link_rec("2014-08-14", issuelinks=[], changelog=[
+        _link_entry("2014-10-24", "add", "EIM-1", "This issue devices linked to EIM-1"),
+        _link_entry("2014-11-24", "remove", "EIM-1", "This issue devices linked to EIM-1"),
+    ])
+    rows, disc = replay.fold_link_history(rec)
+    assert _link_by_target(rows, "EIM-1") == [
+        {"node_id": "SUP-1", "target_key": "EIM-1", "link_type": "DEVICES_LINKED_TO",
+         "valid_from": "2014-10-24", "valid_to": "2014-11-24", "source": "changelog"}]
+    assert disc == []
+
+
+def test_link_added_and_still_present_is_open_interval():
+    rec = _link_rec("2014-08-14",
+                    issuelinks=[{"type": {"name": "Blocks"},
+                                 "outwardIssue": {"key": "SUP-9"}}],
+                    changelog=[_link_entry("2020-01-01", "add", "SUP-9",
+                                           "This issue blocks SUP-9")])
+    rows, _ = replay.fold_link_history(rec)
+    assert _link_by_target(rows, "SUP-9") == [
+        {"node_id": "SUP-1", "target_key": "SUP-9", "link_type": "BLOCKS",
+         "valid_from": "2020-01-01", "valid_to": replay.SENTINEL, "source": "changelog"}]
+
+
+def test_link_present_at_creation_no_events_seeded():
+    rec = _link_rec("2014-08-14",
+                    issuelinks=[{"type": {"name": "Relates"},
+                                 "inwardIssue": {"key": "SUP-5"}}])
+    rows, _ = replay.fold_link_history(rec)
+    assert _link_by_target(rows, "SUP-5") == [
+        {"node_id": "SUP-1", "target_key": "SUP-5", "link_type": "RELATES_TO",
+         "valid_from": "2014-08-14", "valid_to": replay.SENTINEL, "source": "snapshot-seed"}]
+
+
+def test_link_present_since_creation_then_removed():
+    # first event is a REMOVE -> link existed since creation
+    rec = _link_rec("2014-08-14", issuelinks=[], changelog=[
+        _link_entry("2015-01-01", "remove", "SUP-7", "This issue blocks SUP-7")])
+    rows, _ = replay.fold_link_history(rec)
+    assert _link_by_target(rows, "SUP-7") == [
+        {"node_id": "SUP-1", "target_key": "SUP-7", "link_type": "BLOCKS",
+         "valid_from": "2014-08-14", "valid_to": "2015-01-01", "source": "changelog"}]
+
+
+def test_link_discrepancy_present_but_closed():
+    rec = _link_rec("2014-08-14",
+                    issuelinks=[{"type": {"name": "Blocks"},
+                                 "outwardIssue": {"key": "SUP-9"}}],
+                    changelog=[
+                        _link_entry("2020-01-01", "add", "SUP-9", "This issue blocks SUP-9"),
+                        _link_entry("2020-02-01", "remove", "SUP-9", "This issue blocks SUP-9")])
+    rows, disc = replay.fold_link_history(rec)
+    # closed interval emitted; discrepancy flagged (present in snapshot but closed)
+    assert _link_by_target(rows, "SUP-9")[-1]["valid_to"] == "2020-02-01"
+    assert {"ticket": "SUP-1", "target": "SUP-9",
+            "reason": "present-in-snapshot-but-closed"} in disc

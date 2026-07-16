@@ -7,6 +7,8 @@ lost.
 from __future__ import annotations
 import re
 
+from graph_builder.extract import normalize_link_type
+
 SENTINEL = "9999-12-31"
 
 
@@ -144,3 +146,74 @@ def extract_link_events(record: dict) -> list[dict]:
                         "target_key": target, "type_phrase": phrase,
                         "mapped_type": map_link_phrase(phrase)})
     return out
+
+
+def current_links(record: dict) -> dict:
+    """Extract {target_key: canonical_type} from issuelinks snapshot."""
+    f = record.get("fields") or {}
+    out = {}
+    for l in (f.get("issuelinks") or []):
+        other = l.get("outwardIssue") or l.get("inwardIssue") or {}
+        k = other.get("key")
+        if k:
+            out[k] = normalize_link_type(((l.get("type") or {}).get("name")) or "")
+    return out
+
+
+def _lh_row(key, target, ltype, vfrom, vto, source):
+    """Helper to build a link history row with exact shape."""
+    return {"node_id": key, "target_key": target, "link_type": ltype,
+            "valid_from": vfrom, "valid_to": vto, "source": source}
+
+
+def fold_link_history(record: dict):
+    """Fold link add/remove events + current snapshot into validity intervals.
+
+    Returns: (rows, discrepancies)
+    - rows: list of {"node_id","target_key","link_type","valid_from","valid_to","source"}
+    - discrepancies: list of {"ticket","target","reason"} for snapshot/changelog mismatches
+    """
+    key = record["key"]
+    created = (record.get("fields") or {}).get("created")
+    snapshot = current_links(record)             # {target_key: canonical_type}
+    events = extract_link_events(record)
+    by_target: dict[str, list] = {}
+    for ev in events:
+        by_target.setdefault(ev["target_key"], []).append(ev)
+
+    rows: list[dict] = []
+    discrepancies: list[dict] = []
+    targets = set(by_target) | set(snapshot)
+    for target in sorted(targets):
+        evs = sorted(by_target.get(target, []), key=lambda e: e["ts"])
+        # choose link_type: first add's mapped_type, else snapshot canonical, else first event's
+        ltype = None
+        for e in evs:
+            if e["action"] == "add":
+                ltype = e["mapped_type"]
+                break
+        if ltype is None:
+            ltype = snapshot.get(target) or (evs[0]["mapped_type"] if evs else "RELATED")
+
+        if not evs:
+            rows.append(_lh_row(key, target, ltype, created, SENTINEL, "snapshot-seed"))
+            continue
+
+        present_since = created if evs[0]["action"] == "remove" else None
+        for e in evs:
+            if e["action"] == "add":
+                if present_since is None:
+                    present_since = e["ts"]
+            else:  # remove
+                if present_since is not None:
+                    if present_since != e["ts"]:      # skip zero-length
+                        rows.append(_lh_row(key, target, ltype, present_since, e["ts"], "changelog"))
+                    present_since = None
+        if present_since is not None:
+            rows.append(_lh_row(key, target, ltype, present_since, SENTINEL, "changelog"))
+        elif target in snapshot:
+            # changelog says removed, but snapshot still has it -> discrepancy
+            discrepancies.append({"ticket": key, "target": target,
+                                  "reason": "present-in-snapshot-but-closed"})
+
+    return rows, discrepancies
