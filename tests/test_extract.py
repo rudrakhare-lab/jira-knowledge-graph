@@ -95,3 +95,19 @@ def test_hierarchy_edges(ticket_full):
     assert ("PB-1", "SUP-500", "PARENT_OF") in es
     # subtask SUP-501 is a subtask of SUP-500
     assert ("SUP-501", "SUP-500", "SUBTASK_OF") in es
+
+
+def test_mentions_from_description_and_comments(ticket_full):
+    es = _edge_set(extract.extract_mentions_edges(ticket_full))
+    assert ("SUP-500", "PB-1", "MENTIONS") in es    # from description
+    assert ("SUP-500", "TB-7", "MENTIONS") in es    # from comment
+    # never mentions itself
+    assert ("SUP-500", "SUP-500", "MENTIONS") not in es
+
+
+def test_extract_all_combines(ticket_full):
+    nodes, edges = extract.extract_all(ticket_full)
+    assert any(n["id"] == "SUP-500" for n in nodes)
+    types = {e["type"] for e in edges}
+    assert {"IN_PROJECT", "BLOCKS", "RELATES_TO", "PARENT_OF",
+            "SUBTASK_OF", "MENTIONS", "ASSIGNED_TO"} <= types

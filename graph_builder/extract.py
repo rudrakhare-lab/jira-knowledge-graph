@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import re
 
+from graph_builder.adf import adf_to_text
+
 EPIC_TYPES = {"Epic"}
 
 
@@ -160,3 +162,33 @@ def extract_hierarchy_edges(record: dict) -> list[dict]:
         if sub.get("key"):
             edges.append(_edge(sub["key"], key, "SUBTASK_OF", vf))
     return edges
+
+
+KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
+
+
+def extract_mentions_edges(record: dict) -> list[dict]:
+    f = record.get("fields") or {}
+    key = record["key"]
+    vf = f.get("created")
+    text_parts = [adf_to_text(f.get("description"))]
+    for c in (record.get("comments") or []):
+        text_parts.append(adf_to_text(c.get("body")))
+    blob = " ".join(text_parts)
+    seen: set[str] = set()
+    edges: list[dict] = []
+    for m in KEY_RE.findall(blob):
+        if m == key or m in seen:
+            continue
+        seen.add(m)
+        edges.append(_edge(key, m, "MENTIONS", vf, type_confidence="mention"))
+    return edges
+
+
+def extract_all(record: dict) -> tuple[list[dict], list[dict]]:
+    nodes = extract_nodes(record)
+    edges = (extract_membership_people_edges(record)
+             + extract_link_edges(record)
+             + extract_hierarchy_edges(record)
+             + extract_mentions_edges(record))
+    return nodes, edges
