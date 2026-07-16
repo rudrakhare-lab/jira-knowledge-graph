@@ -33,3 +33,26 @@ def test_full_ticket_emits_all_node_types(ticket_full):
     types = {n["type"] for n in nodes}
     assert {"Ticket", "Project", "User", "Component",
             "Label", "Sprint", "FixVersion"} <= types
+
+
+def _edge_set(edges):
+    return {(e["src"], e["dst"], e["type"]) for e in edges}
+
+
+def test_membership_and_people_edges(ticket_full):
+    edges = extract.extract_membership_people_edges(ticket_full)
+    es = _edge_set(edges)
+    assert ("SUP-500", "project:SUP", "IN_PROJECT") in es
+    assert ("SUP-500", "component:c9", "HAS_COMPONENT") in es
+    assert ("SUP-500", "label:timeout", "HAS_LABEL") in es
+    assert ("SUP-500", "sprint:77", "IN_SPRINT") in es
+    assert ("SUP-500", "version:v3", "HAS_FIXVERSION") in es
+    assert ("SUP-500", "user:acc-r", "REPORTED_BY") in es
+    assert ("SUP-500", "user:acc-a", "ASSIGNED_TO") in es
+    # valid_from carries the ticket creation date
+    assert all(e["valid_from"] == "2020-06-01T09:00:00.000+0530" for e in edges)
+
+
+def test_no_assignee_no_assigned_edge(ticket_epic):
+    es = _edge_set(extract.extract_membership_people_edges(ticket_epic))
+    assert not any(t == "ASSIGNED_TO" for (_, _, t) in es)

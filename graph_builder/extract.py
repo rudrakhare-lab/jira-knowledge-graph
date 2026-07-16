@@ -70,3 +70,45 @@ def extract_nodes(record: dict) -> list[dict]:
             nodes.append(_node(f"version:{v['id']}", "FixVersion", {"name": v.get("name")}))
 
     return nodes
+
+
+def _edge(src, dst, type_, valid_from, type_confidence="exact", link_id=None):
+    return {"src": src, "dst": dst, "type": type_, "valid_from": valid_from,
+            "type_confidence": type_confidence, "link_id": link_id}
+
+
+def extract_membership_people_edges(record: dict) -> list[dict]:
+    f = record.get("fields") or {}
+    key = record["key"]
+    vf = f.get("created")
+    edges: list[dict] = []
+
+    proj = f.get("project") or {}
+    if proj.get("key"):
+        edges.append(_edge(key, f"project:{proj['key']}", "IN_PROJECT", vf))
+
+    for c in (f.get("components") or []):
+        if c.get("id"):
+            edges.append(_edge(key, f"component:{c['id']}", "HAS_COMPONENT", vf))
+
+    for lb in (f.get("labels") or []):
+        edges.append(_edge(key, f"label:{lb}", "HAS_LABEL", vf))
+
+    spr = f.get("sprint")
+    spr_list = spr if isinstance(spr, list) else ([spr] if isinstance(spr, dict) else [])
+    for s in spr_list:
+        if isinstance(s, dict) and s.get("id") is not None:
+            edges.append(_edge(key, f"sprint:{s['id']}", "IN_SPRINT", vf))
+
+    for v in (f.get("fixVersions") or []):
+        if v.get("id"):
+            edges.append(_edge(key, f"version:{v['id']}", "HAS_FIXVERSION", vf))
+
+    rid = user_id(f.get("reporter"))
+    if rid:
+        edges.append(_edge(key, rid, "REPORTED_BY", vf))
+    aid = user_id(f.get("assignee"))
+    if aid:
+        edges.append(_edge(key, aid, "ASSIGNED_TO", vf))
+
+    return edges
