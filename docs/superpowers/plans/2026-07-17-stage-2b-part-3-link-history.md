@@ -540,4 +540,7 @@ cd /Users/rudrakhare/jira-knowledge-graph && git commit --allow-empty -m "test(t
 - `resolution` attr_history (ingestor fetched `resolutiondate`, not `resolution`).
 - `index_status()` surfacing counts for events/attr_history/key_alias/link_events/link_history + discrepancy totals.
 - Resolve `target_key` through `key_alias` at query time (Stage 4) so old-key link targets join to current nodes.
+- Concurrent link types to the same target collapse: `current_links` is keyed by `target_key` only and the fold iterates per-target, so if X both BLOCKS and RELATES_TO Y only one type-interval is emitted. The PK `(node_id,target_key,link_type,valid_from)` would permit both — handle when materializing onto canonical `edges`.
+- `link_type` is best-effort: changelog links use `map_link_phrase` (phrase-based), snapshot-seeded links use `normalize_link_type` (name-based); the two can diverge, so type-filtered as-of queries are best-effort until reconciled.
+- WAL note: the temporal build drivers set `journal_mode=WAL` on the shared `graph.db` (already WAL from Stage 2a's `init_db`); this persists `-wal`/`-shm` sidecars but is non-destructive to `nodes`/`edges`.
 ```
