@@ -5,6 +5,7 @@ changelog (see fold_attr_history) so early-date and never-changed values are not
 lost.
 """
 from __future__ import annotations
+import re
 
 SENTINEL = "9999-12-31"
 
@@ -86,3 +87,60 @@ def fold_attr_history(record: dict):
                                   "folded": prev_val, "snapshot": snap})
 
     return rows, discrepancies
+
+
+_LINK_VERB_MAP = [
+    ("blocks", "BLOCKS"), ("blocked by", "BLOCKS"),
+    ("duplicat", "DUPLICATES"),
+    ("clones", "CLONES"), ("cloned by", "CLONES"),
+    ("caused by", "CAUSES"), ("causes", "CAUSES"),
+    ("problem", "CAUSES"), ("incident", "CAUSES"),
+    ("reviews", "REVIEWS"), ("reviewed by", "REVIEWS"),
+    ("relates to", "RELATES_TO"), ("related to", "RELATES_TO"),
+]
+
+
+def map_link_phrase(phrase):
+    if not phrase:
+        return "RELATED"
+    p = phrase.lower()
+    for verb, canon in _LINK_VERB_MAP:
+        if verb in p:
+            return canon
+    # custom link type: drop the ticket key and leading "this issue ", UPPER_SNAKE
+    core = re.sub(r"\b[A-Z][A-Z0-9]+-\d+\b", "", phrase)
+    core = re.sub(r"(?i)^\s*this issue\s+", "", core).strip()
+    core = re.sub(r"[^A-Za-z0-9]+", "_", core).strip("_").upper()
+    return core or "RELATED"
+
+
+def extract_key_aliases(record: dict) -> list[dict]:
+    key = record["key"]
+    out = []
+    for entry in (record.get("changelog") or []):
+        for it in (entry.get("items") or []):
+            if it.get("field") == "Key":
+                old = it.get("fromString")
+                if old and old != key:
+                    out.append({"old_key": old, "current_key": key})
+    return out
+
+
+def extract_link_events(record: dict) -> list[dict]:
+    key = record["key"]
+    out = []
+    for entry in (record.get("changelog") or []):
+        ts = entry.get("created")
+        for it in (entry.get("items") or []):
+            if it.get("field") != "Link":
+                continue
+            if it.get("to"):
+                target, phrase, action = it.get("to"), it.get("toString"), "add"
+            elif it.get("from"):
+                target, phrase, action = it.get("from"), it.get("fromString"), "remove"
+            else:
+                continue
+            out.append({"ticket_id": key, "ts": ts, "action": action,
+                        "target_key": target, "type_phrase": phrase,
+                        "mapped_type": map_link_phrase(phrase)})
+    return out

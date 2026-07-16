@@ -89,3 +89,44 @@ def test_completeness_discrepancy_flagged():
     _, disc = replay.fold_attr_history(rec)
     assert {"ticket": "SUP-1", "attr": "status",
             "folded": "Reopened", "snapshot": "Done"} in disc
+
+
+def test_map_link_phrase_known_and_custom():
+    assert replay.map_link_phrase("This issue blocks FOO-1") == "BLOCKS"
+    assert replay.map_link_phrase("This issue is blocked by FOO-1") == "BLOCKS"
+    assert replay.map_link_phrase("This issue relates to FOO-1") == "RELATES_TO"
+    assert replay.map_link_phrase("This issue duplicates FOO-1") == "DUPLICATES"
+    assert replay.map_link_phrase("This issue devices linked to EIM-15015") == "DEVICES_LINKED_TO"
+    assert replay.map_link_phrase("") == "RELATED"
+
+
+def test_extract_key_aliases():
+    rec = {"key": "EIMV2-14875", "fields": {"created": "t"}, "changelog": [
+        {"created": "2015-06-08", "author": {"accountId": "a"}, "items": [
+            {"field": "Key", "from": None, "fromString": "EIM-5998",
+             "to": None, "toString": "EIMV2-14875"},
+            {"field": "project", "fromString": "old", "toString": "new"}]}]}
+    aliases = replay.extract_key_aliases(rec)
+    assert aliases == [{"old_key": "EIM-5998", "current_key": "EIMV2-14875"}]
+
+
+def test_extract_link_events_add_and_remove():
+    rec = {"key": "T-1", "fields": {"created": "t"}, "changelog": [
+        {"created": "2014-10-24", "author": {"accountId": "a"}, "items": [
+            {"field": "Link", "from": None, "fromString": None,
+             "to": "EIM-15015", "toString": "This issue devices linked to EIM-15015"}]},
+        {"created": "2014-11-24", "author": {"accountId": "a"}, "items": [
+            {"field": "Link", "from": "EIM-15015",
+             "fromString": "This issue devices linked to EIM-15015",
+             "to": None, "toString": None}]}]}
+    evs = replay.extract_link_events(rec)
+    assert evs == [
+        {"ticket_id": "T-1", "ts": "2014-10-24", "action": "add",
+         "target_key": "EIM-15015",
+         "type_phrase": "This issue devices linked to EIM-15015",
+         "mapped_type": "DEVICES_LINKED_TO"},
+        {"ticket_id": "T-1", "ts": "2014-11-24", "action": "remove",
+         "target_key": "EIM-15015",
+         "type_phrase": "This issue devices linked to EIM-15015",
+         "mapped_type": "DEVICES_LINKED_TO"},
+    ]
