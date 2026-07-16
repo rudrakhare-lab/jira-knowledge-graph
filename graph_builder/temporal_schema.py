@@ -84,3 +84,33 @@ def init_alias_link(conn: sqlite3.Connection) -> None:
 def create_alias_link_indexes(conn: sqlite3.Connection) -> None:
     conn.executescript(ALIAS_LINK_INDEX_SQL)
     conn.commit()
+
+
+LINK_HISTORY_SCHEMA_SQL = """
+DROP TABLE IF EXISTS link_history;
+
+CREATE TABLE link_history (
+  node_id    TEXT,
+  target_key TEXT,
+  link_type  TEXT,
+  valid_from TEXT,
+  valid_to   TEXT NOT NULL DEFAULT '9999-12-31',
+  source     TEXT,
+  PRIMARY KEY (node_id, target_key, link_type, valid_from)
+) WITHOUT ROWID;
+"""
+
+LINK_HISTORY_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS ix_link_history_asof   ON link_history(node_id, valid_from, valid_to);
+CREATE INDEX IF NOT EXISTS ix_link_history_target ON link_history(target_key);
+"""
+
+
+def init_link_history(conn: sqlite3.Connection) -> None:
+    conn.executescript(LINK_HISTORY_SCHEMA_SQL)
+    conn.commit()
+
+
+def create_link_history_indexes(conn: sqlite3.Connection) -> None:
+    conn.executescript(LINK_HISTORY_INDEX_SQL)
+    conn.commit()

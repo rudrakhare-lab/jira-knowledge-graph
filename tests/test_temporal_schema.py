@@ -66,3 +66,30 @@ def test_init_alias_link_creates_only_its_tables(tmp_path):
     assert conn.execute("SELECT count(*) FROM key_alias").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM nodes").fetchone()[0] == 1
     conn.close()
+
+
+def test_init_link_history_creates_only_its_table(tmp_path):
+    import sqlite3
+    conn = sqlite3.connect(str(tmp_path / "g.db"))
+    conn.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, type TEXT)")
+    conn.execute("INSERT INTO nodes VALUES ('SUP-1','Ticket')")
+    conn.commit()
+    temporal_schema.init_link_history(conn)
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"link_history", "nodes"} <= tables
+    assert conn.execute("SELECT count(*) FROM nodes").fetchone()[0] == 1  # untouched
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(link_history)")}
+    assert {"node_id","target_key","link_type","valid_from","valid_to","source"} <= cols
+    temporal_schema.create_link_history_indexes(conn)
+    idx = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index'")}
+    assert "ix_link_history_asof" in idx
+    # idempotent
+    conn.execute("INSERT INTO link_history(node_id,target_key,link_type,valid_from) "
+                 "VALUES('A','B','BLOCKS','t')")
+    conn.commit()
+    temporal_schema.init_link_history(conn)
+    assert conn.execute("SELECT count(*) FROM link_history").fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM nodes").fetchone()[0] == 1
+    conn.close()
