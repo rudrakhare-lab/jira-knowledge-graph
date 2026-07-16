@@ -60,6 +60,8 @@ def fold_attr_history(record: dict):
             for it in (entry.get("items") or []):
                 if it.get("field") == jira_field:
                     evs.append((ts, it))
+        # NOTE: lexicographic ts sort assumes a uniform timezone offset (this Jira
+        # instance emits +0530 throughout). Not valid for mixed-offset/UTC-normalized data.
         evs.sort(key=lambda x: x[0])
 
         def val_of(it, side):  # side: "from" | "to"

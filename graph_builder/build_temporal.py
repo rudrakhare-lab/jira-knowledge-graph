@@ -35,7 +35,7 @@ def build_temporal(jsonl_path: str, db_path: str, batch_size: int = 5000,
                    limit: int | None = None) -> dict:
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=OFF")
+    conn.execute("PRAGMA synchronous=NORMAL")
     temporal_schema.init_temporal(conn)
 
     records = ev_count = ah_count = disc_count = 0
