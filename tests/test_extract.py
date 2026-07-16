@@ -87,3 +87,11 @@ def test_mirror_links_produce_same_canonical_edge():
     eb = extract.extract_link_edges(b)[0]
     assert (ea["src"], ea["dst"], ea["type"]) == (eb["src"], eb["dst"], eb["type"])
     assert (ea["src"], ea["dst"], ea["type"]) == ("A-1", "B-2", "BLOCKS")
+
+
+def test_hierarchy_edges(ticket_full):
+    es = _edge_set(extract.extract_hierarchy_edges(ticket_full))
+    # parent PB-1 is parent of SUP-500
+    assert ("PB-1", "SUP-500", "PARENT_OF") in es
+    # subtask SUP-501 is a subtask of SUP-500
+    assert ("SUP-501", "SUP-500", "SUBTASK_OF") in es

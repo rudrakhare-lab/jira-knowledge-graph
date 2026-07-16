@@ -146,3 +146,17 @@ def extract_link_edges(record: dict) -> list[dict]:
         elif inw and inw.get("key"):
             edges.append(_edge(inw["key"], key, etype, vf, link_id=lid))
     return edges
+
+
+def extract_hierarchy_edges(record: dict) -> list[dict]:
+    f = record.get("fields") or {}
+    key = record["key"]
+    vf = f.get("created")
+    edges: list[dict] = []
+    parent = f.get("parent") or {}
+    if parent.get("key"):
+        edges.append(_edge(parent["key"], key, "PARENT_OF", vf))
+    for sub in (f.get("subtasks") or []):
+        if sub.get("key"):
+            edges.append(_edge(sub["key"], key, "SUBTASK_OF", vf))
+    return edges
