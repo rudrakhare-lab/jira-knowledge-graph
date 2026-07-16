@@ -48,3 +48,39 @@ def init_temporal(conn: sqlite3.Connection) -> None:
 def create_temporal_indexes(conn: sqlite3.Connection) -> None:
     conn.executescript(TEMPORAL_INDEX_SQL)
     conn.commit()
+
+
+ALIAS_LINK_SCHEMA_SQL = """
+DROP TABLE IF EXISTS key_alias;
+DROP TABLE IF EXISTS link_events;
+
+CREATE TABLE key_alias (
+  old_key     TEXT PRIMARY KEY,
+  current_key TEXT
+);
+
+CREATE TABLE link_events (
+  link_event_id INTEGER PRIMARY KEY,
+  ticket_id     TEXT,
+  ts            TEXT,
+  action        TEXT,
+  target_key    TEXT,
+  type_phrase   TEXT,
+  mapped_type   TEXT
+);
+"""
+
+ALIAS_LINK_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS ix_link_events_ticket_ts ON link_events(ticket_id, ts);
+CREATE INDEX IF NOT EXISTS ix_link_events_target    ON link_events(target_key);
+"""
+
+
+def init_alias_link(conn: sqlite3.Connection) -> None:
+    conn.executescript(ALIAS_LINK_SCHEMA_SQL)
+    conn.commit()
+
+
+def create_alias_link_indexes(conn: sqlite3.Connection) -> None:
+    conn.executescript(ALIAS_LINK_INDEX_SQL)
+    conn.commit()

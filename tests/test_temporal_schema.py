@@ -37,3 +37,32 @@ def test_create_temporal_indexes(tmp_path):
     assert "ix_events_ticket_field_ts" in idx
     assert "ix_attr_asof" in idx
     conn.close()
+
+
+def test_init_alias_link_creates_only_its_tables(tmp_path):
+    import sqlite3
+    conn = sqlite3.connect(str(tmp_path / "g.db"))
+    conn.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, type TEXT)")
+    conn.execute("INSERT INTO nodes VALUES ('SUP-1','Ticket')")
+    conn.commit()
+    temporal_schema.init_alias_link(conn)
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"key_alias", "link_events", "nodes"} <= tables
+    assert conn.execute("SELECT count(*) FROM nodes").fetchone()[0] == 1  # untouched
+    kcols = {r[1] for r in conn.execute("PRAGMA table_info(key_alias)")}
+    lcols = {r[1] for r in conn.execute("PRAGMA table_info(link_events)")}
+    assert {"old_key", "current_key"} <= kcols
+    assert {"link_event_id","ticket_id","ts","action","target_key",
+            "type_phrase","mapped_type"} <= lcols
+    temporal_schema.create_alias_link_indexes(conn)
+    idx = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index'")}
+    assert "ix_link_events_ticket_ts" in idx
+    # idempotent
+    conn.execute("INSERT INTO key_alias VALUES('OLD-1','NEW-1')")
+    conn.commit()
+    temporal_schema.init_alias_link(conn)
+    assert conn.execute("SELECT count(*) FROM key_alias").fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM nodes").fetchone()[0] == 1
+    conn.close()
