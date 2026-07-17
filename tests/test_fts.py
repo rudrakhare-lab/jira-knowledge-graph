@@ -21,3 +21,27 @@ def test_init_fts_creates_only_tickets_fts(tmp_path):
     assert conn.execute("SELECT count(*) FROM tickets_fts").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM nodes").fetchone()[0] == 1
     conn.close()
+
+def test_searchable_text_flattens_adf_and_comments():
+    rec = {"key": "SUP-5", "fields": {
+        "summary": "Login timeout on mobile",
+        "description": {"type": "doc", "content": [
+            {"type": "paragraph", "content": [
+                {"type": "text", "text": "Users hit a 504 after 30s"}]}]}},
+        "comments": [
+            {"body": {"type": "doc", "content": [
+                {"type": "paragraph", "content": [
+                    {"type": "text", "text": "reproduced on staging"}]}]}}],
+        "attachments": [{"extracted_text": "SHOULD NOT BE INDEXED"}]}
+    t = fts.searchable_text(rec)
+    assert t["key"] == "SUP-5"
+    assert t["summary"] == "Login timeout on mobile"
+    assert "504" in t["description"]
+    assert "reproduced on staging" in t["comments"]
+    # attachment text is excluded
+    assert "SHOULD NOT BE INDEXED" not in (t["summary"]+t["description"]+t["comments"])
+
+
+def test_searchable_text_handles_missing_fields():
+    t = fts.searchable_text({"key": "X-1", "fields": {}})
+    assert t == {"key": "X-1", "summary": "", "description": "", "comments": ""}
