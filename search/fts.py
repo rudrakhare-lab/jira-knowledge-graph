@@ -35,3 +35,27 @@ def searchable_text(record: dict) -> dict:
         parts.append(adf_to_text(c.get("body")))
     return {"key": record["key"], "summary": summary,
             "description": description, "comments": " ".join(parts)}
+
+
+def _fts_query(raw: str) -> str:
+    r"""Tokenize raw text to word-character terms, double-quote each, join with spaces.
+
+    Prevents FTS5 syntax injection by extracting only \w+ terms (alphanumeric + underscore),
+    lowercasing, and wrapping in quotes. Empty/no-terms returns empty string.
+    """
+    terms = re.findall(r"\w+", (raw or "").lower())
+    return " ".join('"%s"' % t for t in terms)
+
+
+def search_bm25(conn: sqlite3.Connection, query: str, limit: int = 20):
+    """Search tickets_fts via BM25 ranking.
+
+    Returns list of (key, score) tuples ranked best-first (more negative score = better).
+    Empty sanitized query returns [].
+    """
+    q = _fts_query(query)
+    if not q:
+        return []
+    return conn.execute(
+        "SELECT key, bm25(tickets_fts) AS score FROM tickets_fts "
+        "WHERE tickets_fts MATCH ? ORDER BY score LIMIT ?", (q, limit)).fetchall()
