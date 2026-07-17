@@ -29,6 +29,8 @@ def _flush(conn, rows):
 def build_fts(jsonl_path: str, db_path: str, batch_size: int = 2000,
               limit: int | None = None) -> dict:
     conn = sqlite3.connect(db_path)
+    # WAL + synchronous=NORMAL: durable (crash-safe) yet fast on the shared graph.db;
+    # graph.db is already WAL from Stage 2a. journal_mode persists in the db header.
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     init_fts(conn)
@@ -45,6 +47,8 @@ def build_fts(jsonl_path: str, db_path: str, batch_size: int = 2000,
             except json.JSONDecodeError:
                 continue
             records += 1
+            if not rec.get("key"):
+                continue
             rows.append(searchable_text(rec))
             indexed += 1
             if len(rows) >= batch_size:

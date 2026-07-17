@@ -47,7 +47,7 @@ def _fts_query(raw: str) -> str:
     return " ".join('"%s"' % t for t in terms)
 
 
-def search_bm25(conn: sqlite3.Connection, query: str, limit: int = 20):
+def search_bm25(conn: sqlite3.Connection, query: str, limit: int = 20) -> list:
     """Search tickets_fts via BM25 ranking.
 
     Returns list of (key, score) tuples ranked best-first (more negative score = better).

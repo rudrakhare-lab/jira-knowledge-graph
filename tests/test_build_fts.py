@@ -32,3 +32,12 @@ def test_build_fts_idempotent(tmp_path):
     a = build_fts.build_fts(str(FIX), db, batch_size=2)
     b = build_fts.build_fts(str(FIX), db, batch_size=2)
     assert a == b
+
+
+def test_build_fts_skips_records_without_key(tmp_path):
+    p = tmp_path / "mixed.jsonl"
+    p.write_text(
+        '{"key":"K-1","fields":{"summary":"has key"},"comments":[]}\n'
+        '{"fields":{"summary":"no key here"},"comments":[]}\n')
+    counts = build_fts.build_fts(str(p), str(tmp_path / "g.db"), batch_size=5)
+    assert counts == {"records": 2, "indexed": 1}
